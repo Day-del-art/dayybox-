@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DayyBox Railway</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#090909;color:#f6f6f6}
+    .wrap{max-width:1100px;margin:auto;padding:24px}
+    .card{background:#151515;border:1px solid #2a2a2a;border-radius:18px;padding:20px;margin-bottom:16px}
+    input,button{padding:12px;border-radius:12px;border:1px solid #333;background:#111;color:#fff}
+    button{cursor:pointer}
+    .primary{background:linear-gradient(135deg,#ff2a6d,#ff7b00);border:none}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .drop{border:1px dashed #444;border-radius:16px;padding:24px;text-align:center}
+    .box{margin-top:12px;padding:14px;background:#111;border:1px solid #2a2a2a;border-radius:14px;word-break:break-word}
+    @media(max-width:900px){.grid,.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>DayyBox Railway</h1>
+      <p>versi siap deploy ke railway. frontend + backend satu project.</p>
+      <p>endpoint: <code>/api/health</code> · <code>/api/upload</code> · <code>/api/list</code> · <code>/api/delete</code></p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>info</h2>
+        <p><b>GET /api/health</b> buat cek app hidup.</p>
+        <p><b>GET /api/upload</b> cuma penjelasan cara pakai upload.</p>
+        <p><b>POST /api/upload</b> upload file beneran.</p>
+        <p><b>GET /api/list</b> list file.</p>
+        <p><b>DELETE /api/delete?filename=...</b> hapus file.</p>
+      </div>
+      <div class="card">
+        <div class="drop" id="dropzone">
+          <input type="file" id="fileInput" style="display:none">
+          <h2>drop file lu di sini</h2>
+          <p>atau pencet tombol pilih file</p>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <input id="tokenInput" value="dayy_super_secret_key" placeholder="api key">
+          <input id="fileNameInput" value="belum ada file" readonly>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+          <button class="primary" id="pickBtn">pilih file</button>
+          <button id="uploadBtn">upload sekarang</button>
+          <button id="healthBtn">cek api</button>
+          <button id="listBtn">refresh file</button>
+          <button id="copyBtn">copy url</button>
+        </div>
+        <div class="box" id="status">status: nunggu file.</div>
+        <div class="box" id="result">belum ada hasil upload.</div>
+        <div id="filesWrap"></div>
+      </div>
+    </div>
+  </div>
+<script>
+const $=id=>document.getElementById(id),fileInput=$('fileInput'),dropzone=$('dropzone'),tokenInput=$('tokenInput'),fileNameInput=$('fileNameInput'),statusBox=$('status'),resultBox=$('result'),filesWrap=$('filesWrap');
+let pickedFile=null,lastUrl='';
+function setStatus(t){statusBox.textContent=t}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function fmtBytes(n){if(!n&&n!==0)return '-';const u=['B','KB','MB','GB'];let i=0,v=Number(n);while(v>=1024&&i<u.length-1){v/=1024;i++}return v.toFixed(v>=100||i===0?0:1)+' '+u[i]}
+function previewHtml(url,type){if(!url)return '';if(type&&type.startsWith('image/'))return '<img src="'+url+'" style="max-width:100%;max-height:320px;border-radius:12px;margin-top:12px">';return ''}
+function selectFile(f){pickedFile=f||null;fileNameInput.value=pickedFile?pickedFile.name:'belum ada file';if(pickedFile)setStatus('status: file kepilih -> '+pickedFile.name)}
+async function safeJson(res){const raw=await res.text();try{return JSON.parse(raw)}catch{throw new Error('response bukan json: '+raw.slice(0,180))}}
+async function checkHealth(){try{const res=await fetch('/api/health');const data=await safeJson(res);setStatus('status: api hidup');resultBox.innerHTML='<pre style="white-space:pre-wrap">'+esc(JSON.stringify(data,null,2))+'</pre>'}catch(e){setStatus('status: '+e.message)}}
+async function uploadFile(){if(!pickedFile)return setStatus('status: pilih file dulu');const token=tokenInput.value.trim();try{setStatus('status: lagi upload...');const form=new FormData();form.append('file',pickedFile);const res=await fetch('/api/upload',{method:'POST',headers:{Authorization:'Bearer '+token},body:form});const data=await safeJson(res);if(!res.ok||!data.success)throw new Error(data.message||'upload gagal');lastUrl=data.url||'';resultBox.innerHTML='<div><b>filename:</b> '+esc(data.filename||'-')+'</div><div><b>type:</b> '+esc(data.type||'-')+'</div><div><b>size:</b> '+esc(fmtBytes(data.size||0))+'</div><div><b>url:</b><br><a href="'+esc(data.url)+'" target="_blank">'+esc(data.url)+'</a></div>'+previewHtml(data.url,data.type);setStatus('status: upload kelar')}catch(e){setStatus('status: '+e.message)}}
+async function loadFiles(){const token=tokenInput.value.trim();try{const res=await fetch('/api/list',{headers:{Authorization:'Bearer '+token}});const data=await safeJson(res);if(!res.ok||!data.success)throw new Error(data.message||'gagal list');if(!data.files||!data.files.length){filesWrap.innerHTML='<div class="box">belum ada file</div>';return}filesWrap.innerHTML=data.files.slice().reverse().map(file=>'<div class="box"><b>'+esc(file.filename)+'</b><br>'+esc(fmtBytes(file.size||0))+'<br><a href="'+esc(file.url)+'" target="_blank">'+esc(file.url)+'</a></div>').join('')}catch(e){filesWrap.innerHTML='<div class="box">'+esc(e.message)+'</div>'}}
+$('pickBtn').onclick=()=>fileInput.click();$('uploadBtn').onclick=uploadFile;$('healthBtn').onclick=checkHealth;$('listBtn').onclick=loadFiles;$('copyBtn').onclick=async()=>{if(!lastUrl)return setStatus('status: belum ada url');await navigator.clipboard.writeText(lastUrl);setStatus('status: url berhasil dicopy')};fileInput.addEventListener('change',e=>selectFile(e.target.files[0]));
+['dragenter','dragover'].forEach(n=>dropzone.addEventListener(n,e=>{e.preventDefault();dropzone.style.borderColor='#ff7b00'}));
+['dragleave','drop'].forEach(n=>dropzone.addEventListener(n,e=>{e.preventDefault();dropzone.style.borderColor='#444'}));
+dropzone.addEventListener('drop',e=>{const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)selectFile(f)});
+checkHealth();loadFiles();
+</script>
+</body>
+</html>
